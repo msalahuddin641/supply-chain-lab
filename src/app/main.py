@@ -10,7 +10,8 @@ API_TOKEN = os.environ.get('API_TOKEN', 'default')
 def get_user(user_id):
     # SQL Injection (vulnerability #2 - Source Code)
     conn = sqlite3.connect('app.db')
-    query = f"SELECT * FROM users WHERE id = {user_id}"
+    query = "SELECT * FROM users WHERE id = ?"
+    conn.execute(query, (user_id,))
     result = conn.execute(query).fetchone()
     return str(result)
 

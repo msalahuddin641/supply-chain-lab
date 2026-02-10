@@ -18,7 +18,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "flask", specifier = "==3.1.0" },
+    { name = "flask", specifier = "==2.3.2" },
     { name = "requests", specifier = "==2.25.1" },
 ]
 
@@ -252,7 +252,7 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "1.26.20"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e4/e8/6ff5e6bc22095cfc59b6ea711b687e2b7ed4bdb373f7eeec370a97d7392f/urllib3-1.26.20.tar.gz", hash = "sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32", size = 307380, upload-time = "2024-08-29T15:43:11.37Z" }
 wheels = [

@@ -1,0 +1,37 @@
+{
+  "invocation": {
+    "parameters": null,
+    "uri": "",
+    "event_id": "",
+    "builder.id": ""
+  },
+  "scanner": {
+    "uri": "pkg:github/aquasecurity/trivy@0.67.2",
+    "version": "0.67.2",
+    "db": {
+      "uri": "",
+      "version": ""
+    },
+    "result": {
+      "SchemaVersion": 2,
+      "CreatedAt": "2026-02-11T10:28:54.38502557Z",
+      "ArtifactName": "src/iac",
+      "ArtifactType": "filesystem",
+      "Results": [
+        {
+          "Target": ".",
+          "Class": "config",
+          "Type": "terraform",
+          "MisconfSummary": {
+            "Successes": 58,
+            "Failures": 0
+          }
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "scanStartedOn": "2026-02-11T10:28:54.38508567Z",
+    "scanFinishedOn": "2026-02-11T10:28:54.38508567Z"
+  }
+}

@@ -1,0 +1,405 @@
+{
+  "builder": {
+    "id": "azureuser@vm-lab-nestor"
+  },
+  "buildType": "https://mobyproject.org/buildkit@v1",
+  "materials": [
+    {
+      "uri": "pkg:docker/docker/buildkit-syft-scanner@stable-1",
+      "digest": {
+        "sha256": "490c3821680b55fe995766f7f22db4e6566ccef41c4cea13b370c4384d7eb3f2"
+      }
+    },
+    {
+      "uri": "pkg:docker/python@3.12-slim?platform=linux%2Famd64",
+      "digest": {
+        "sha256": "9e01bf1ae5db7649a236da7be1e94ffbbbdd7a93f867dd0d8d5720d9e1f89fab"
+      }
+    }
+  ],
+  "invocation": {
+    "configSource": {
+      "entryPoint": "Dockerfile"
+    },
+    "parameters": {
+      "frontend": "dockerfile.v0",
+      "locals": [
+        {
+          "name": "context"
+        },
+        {
+          "name": "dockerfile"
+        }
+      ]
+    },
+    "environment": {
+      "platform": "linux/amd64"
+    }
+  },
+  "buildConfig": {
+    "llbDefinition": [
+      {
+        "id": "step0",
+        "op": {
+          "Op": {
+            "source": {
+              "identifier": "docker-image://docker.io/library/python:3.12-slim@sha256:9e01bf1ae5db7649a236da7be1e94ffbbbdd7a93f867dd0d8d5720d9e1f89fab"
+            }
+          },
+          "platform": {
+            "Architecture": "amd64",
+            "OS": "linux"
+          },
+          "constraints": {}
+        }
+      },
+      {
+        "id": "step1",
+        "op": {
+          "Op": {
+            "source": {
+              "identifier": "local://context",
+              "attrs": {
+                "local.followpaths": "[\"app\"]",
+                "local.sharedkeyhint": "context"
+              }
+            }
+          },
+          "constraints": {}
+        }
+      },
+      {
+        "id": "step2",
+        "op": {
+          "Op": {
+            "file": {
+              "actions": [
+                {
+                  "input": 0,
+                  "secondaryInput": 1,
+                  "output": 0,
+                  "Action": {
+                    "copy": {
+                      "src": "/app",
+                      "dest": "/app/",
+                      "mode": -1,
+                      "followSymlink": true,
+                      "dirCopyContents": true,
+                      "createDestPath": true,
+                      "allowWildcard": true,
+                      "allowEmptyWildcard": true,
+                      "timestamp": -1
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "constraints": {}
+        },
+        "inputs": [
+          "step0:0",
+          "step1:0"
+        ]
+      },
+      {
+        "id": "step3",
+        "op": {
+          "Op": {
+            "file": {
+              "actions": [
+                {
+                  "input": 0,
+                  "secondaryInput": -1,
+                  "output": 0,
+                  "Action": {
+                    "mkdir": {
+                      "path": "/app",
+                      "mode": 493,
+                      "makeParents": true,
+                      "timestamp": -1
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "constraints": {}
+        },
+        "inputs": [
+          "step2:0"
+        ]
+      },
+      {
+        "id": "step4",
+        "op": {
+          "Op": {
+            "exec": {
+              "meta": {
+                "args": [
+                  "/bin/sh",
+                  "-c",
+                  "pip install flask requests"
+                ],
+                "env": [
+                  "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                  "LANG=C.UTF-8",
+                  "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                  "PYTHON_VERSION=3.12.12",
+                  "PYTHON_SHA256=fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4"
+                ],
+                "cwd": "/app",
+                "removeMountStubsRecursive": true
+              },
+              "mounts": [
+                {
+                  "dest": "/"
+                }
+              ]
+            }
+          },
+          "platform": {
+            "Architecture": "amd64",
+            "OS": "linux"
+          },
+          "constraints": {}
+        },
+        "inputs": [
+          "step3:0"
+        ]
+      },
+      {
+        "id": "step5",
+        "op": {
+          "Op": {
+            "exec": {
+              "meta": {
+                "args": [
+                  "/bin/sh",
+                  "-c",
+                  "useradd -m -u 1000 appuser &&     chown -R appuser:appuser /app"
+                ],
+                "env": [
+                  "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                  "LANG=C.UTF-8",
+                  "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                  "PYTHON_VERSION=3.12.12",
+                  "PYTHON_SHA256=fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4"
+                ],
+                "cwd": "/app",
+                "removeMountStubsRecursive": true
+              },
+              "mounts": [
+                {
+                  "dest": "/"
+                }
+              ]
+            }
+          },
+          "platform": {
+            "Architecture": "amd64",
+            "OS": "linux"
+          },
+          "constraints": {}
+        },
+        "inputs": [
+          "step4:0"
+        ]
+      },
+      {
+        "id": "step6",
+        "op": {
+          "Op": {}
+        },
+        "inputs": [
+          "step5:0"
+        ]
+      }
+    ],
+    "digestMapping": {
+      "sha256:4c44cf365db750bd2522ae2be491f7d6f8b54a0579fd96ed3f48daedf89b9268": "step2",
+      "sha256:550a67a0f3634aa171de2e221b001ff0f8422f59ae4ec1aaee03b6710c12dbd2": "step5",
+      "sha256:896e35eb2a6ea5e64f5f3e32efb62ff4fcd4e60a084bcf5555c2447bf0a8e319": "step0",
+      "sha256:a3ba5526fae093fed3c81b0835bd900ac2c11f56c71e06c3364dde49950b7356": "step1",
+      "sha256:cd25923c01895fa2d86d6e02d8239ee3acc12783ac693c3d0621359e96c70e12": "step3",
+      "sha256:dad0b0b4815c125ac80f72d2d68efef4e0152f57beef343b865e3821d118d48c": "step4",
+      "sha256:e3a6483c6aea4686b7a4fe67dfc18fbe299ac16b1d2ce60d897ce63f1f08321d": "step6"
+    }
+  },
+  "metadata": {
+    "buildInvocationID": "dsoymwssq4bgmb6uqwrlg60v2",
+    "buildStartedOn": "2026-02-11T09:33:06.564419038Z",
+    "buildFinishedOn": "2026-02-11T09:33:33.900582484Z",
+    "completeness": {
+      "parameters": true,
+      "environment": true,
+      "materials": false
+    },
+    "reproducible": false,
+    "https://mobyproject.org/buildkit@v1#metadata": {
+      "vcs": {
+        "localdir:context": "src",
+        "localdir:dockerfile": "src/docker",
+        "revision": "b810ec18c860315621ab559499a5aaccb3bc3749",
+        "source": "git@github.com:msalahuddin641/supply-chain-lab.git"
+      },
+      "source": {
+        "locations": {
+          "step0": {
+            "locations": [
+              {
+                "ranges": [
+                  {
+                    "start": {
+                      "line": 2
+                    },
+                    "end": {
+                      "line": 2
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "step1": {},
+          "step2": {
+            "locations": [
+              {
+                "ranges": [
+                  {
+                    "start": {
+                      "line": 3
+                    },
+                    "end": {
+                      "line": 3
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "step3": {
+            "locations": [
+              {
+                "ranges": [
+                  {
+                    "start": {
+                      "line": 4
+                    },
+                    "end": {
+                      "line": 4
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "step4": {
+            "locations": [
+              {
+                "ranges": [
+                  {
+                    "start": {
+                      "line": 5
+                    },
+                    "end": {
+                      "line": 5
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "step5": {
+            "locations": [
+              {
+                "ranges": [
+                  {
+                    "start": {
+                      "line": 10
+                    },
+                    "end": {
+                      "line": 10
+                    }
+                  },
+                  {
+                    "start": {
+                      "line": 11
+                    },
+                    "end": {
+                      "line": 11
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "infos": [
+          {
+            "filename": "Dockerfile",
+            "language": "Dockerfile",
+            "data": "IyBWdWxuZXJhYmxlIERvY2tlcmZpbGUgd2l0aCAyIGtleSBzZWN1cml0eSBpc3N1ZXMKRlJPTSBweXRob246My4xMi1zbGltCkNPUFkgYXBwLyAvYXBwLwpXT1JLRElSIC9hcHAKUlVOIHBpcCBpbnN0YWxsIGZsYXNrIHJlcXVlc3RzCkVYUE9TRSA1MDAwCkNNRCBbInB5dGhvbiIsICJtYWluLnB5Il0KCiNSZW1vdmluZyByb290IHVzZXIKUlVOIHVzZXJhZGQgLW0gLXUgMTAwMCBhcHB1c2VyICYmIFwKICAgIGNob3duIC1SIGFwcHVzZXI6YXBwdXNlciAvYXBwClVTRVIgYXBwdXNlcgo=",
+            "llbDefinition": [
+              {
+                "id": "step0",
+                "op": {
+                  "Op": {
+                    "source": {
+                      "identifier": "local://dockerfile",
+                      "attrs": {
+                        "local.differ": "none",
+                        "local.followpaths": "[\"Dockerfile\",\"Dockerfile.dockerignore\",\"dockerfile\"]",
+                        "local.sharedkeyhint": "dockerfile"
+                      }
+                    }
+                  },
+                  "constraints": {}
+                }
+              },
+              {
+                "id": "step1",
+                "op": {
+                  "Op": {}
+                },
+                "inputs": [
+                  "step0:0"
+                ]
+              }
+            ],
+            "digestMapping": {
+              "sha256:726265a2a521d4d55cd8308f247b952e6aa3dd2f862fe25b086bc22fd924ca3c": "step0",
+              "sha256:97662f215504baab331d991d2154378995ec6a05fd815cd0934596ecb5876161": "step1"
+            }
+          }
+        ]
+      },
+      "layers": {
+        "step0:0": [
+          [
+            {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+              "digest": "sha256:0c8d55a45c0dc58de60579b9cc5b708de9e7957f4591fc7de941b67c7e245da0",
+              "size": 29778596
+            },
+            {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+              "digest": "sha256:690eaffcf0e9a6e579bf82062d0d78590bd1bc000a309b8e76ff4ca460bcdb6f",
+              "size": 1292731
+            },
+            {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+              "digest": "sha256:9395e1d7be50336f1932db3e6904cc05ad5b727731f03ae218688af3f525ec30",
+              "size": 12112599
+            },
+            {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+              "digest": "sha256:4948ee38326639b0ee49566ec9752e0500fde95ffa7a4771067a7856446029fe",
+              "size": 251
+            }
+          ]
+        ]
+      }
+    }
+  }
+}

@@ -2,7 +2,6 @@
 local/
 vms
 vms/
-attestations/
 solutions/
 opencode.json
 playwright-config.json

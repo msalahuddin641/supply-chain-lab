@@ -1,217 +1,114 @@
-name: Supply Chain Security Pipeline
+name: Secure Supply Chain Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  concurrency: # Prevents resource contention from multiple runs
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 permissions:
   id-token: write
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/supply-chain-app
-  IMAGE_TAG: ${{ github.sha }}
-
 jobs:
-  supply-chain:
+  secure-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}
+      TAG: ${{ github.sha }}
 
     steps:
-    # ------------------------------------------------------------
-    # Checkout
-    # ------------------------------------------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    # ------------------------------------------------------------
-    # Install Tools
-    # ------------------------------------------------------------
-    - name: Install Trivy
-      uses: aquasecurity/setup-trivy@v0.2.0
+      # PHASE 1: ALL 5 SECURITY SCANS
+      - name: 1 & 2. Scan Source and Dependencies
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
 
-    - name: Install Cosign
-      uses: sigstore/cosign-installer@v3.5.0
+      - name: 3 & 4. Scan Dockerfile and IaC
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
 
-    - name: Install Rekor CLI
-      run: |
-        curl -sSL https://github.com/sigstore/rekor/releases/latest/download/rekor-cli-linux-amd64 -o rekor-cli
-        chmod +x rekor-cli
-        sudo mv rekor-cli /usr/local/bin/rekor-cli
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Install Syft
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Build Locally for Image Scan
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src
+          file: ./src/docker/Dockerfile
+          load: true
+          tags: supply-chain-app:test
 
-    - name: Login to GHCR
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 5. Scan Container Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'supply-chain-app:test'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
 
-    # ------------------------------------------------------------
-    # PHASE 1 — SECURITY SCANNING (Fail on HIGH/CRITICAL)
-    # ------------------------------------------------------------
-    - name: Scan Source & Dependencies
-      run: |
-        trivy fs --severity HIGH,CRITICAL --exit-code 1 src/
+      # PHASE 2: BUILD WITH ATTESTATIONS
+      - name: Final Build and Push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src
+          file: ./src/docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG }}
+          provenance: true
+          sbom: true
 
-    - name: Scan Dockerfile
-      run: |
-        trivy config --severity HIGH,CRITICAL --exit-code 1 src/docker/
+      # PHASE 3: SIGNING & VULNERABILITY ATTESTATIONS
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
 
-    - name: Scan IaC
-      run: |
-        trivy config --severity HIGH,CRITICAL --exit-code 1 src/iac/
+      - name: Sign & Attest Everything
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE_REF="${{ env.IMAGE_NAME }}@${{ env.DIGEST }}"
+          cosign sign --yes $IMAGE_REF
+          trivy image --format cosign-vuln $IMAGE_REF > vuln.json
+          cosign attest --yes --type vuln --predicate vuln.json $IMAGE_REF
 
-    - name: Scan Kubernetes Manifests
-      run: |
-        trivy config --severity HIGH,CRITICAL --exit-code 1 src/k8s/
+      # PHASE 4: VERIFICATION (Fixed to prevent hanging)
+      - name: Verify All Proofs
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE_REF="${{ env.IMAGE_NAME }}@${{ env.DIGEST }}"
+          
+          # 1. Verify Signature
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/supply-chain.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            $IMAGE_REF
 
-    # ------------------------------------------------------------
-    # PHASE 2 — BUILD IMAGE (Single Arch for Stability)
-    # ------------------------------------------------------------
-    - name: Build and Push Image
-      id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: ./src
-        file: ./src/docker/Dockerfile
-        push: true
-        platforms: linux/amd64
-        tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-    - name: Capture Image Digest
-      run: |
-        echo "DIGEST=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
-        echo "IMAGE=${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
-
-    - name: Scan Built Image (Ignore Unfixed OS CVEs)
-      run: |
-        trivy image \
-          --severity HIGH,CRITICAL \
-          --ignore-unfixed \
-          --exit-code 1 \
-          $IMAGE
-
-    # ------------------------------------------------------------
-    # PHASE 2 — GENERATE ATTESTATIONS
-    # ------------------------------------------------------------
-    - name: Create Attestations Directory
-      run: mkdir -p attestations
-
-    - name: Generate SBOM (SPDX)
-      run: |
-        syft $IMAGE -o spdx-json=attestations/sbom.json
-
-    - name: Generate Source Vulnerability Attestation
-      run: |
-        trivy fs --format cosign-vuln src/ > attestations/vuln-source.json
-
-    - name: Generate IaC Vulnerability Attestation
-      run: |
-        trivy config --format cosign-vuln src/iac/ > attestations/vuln-iac.json
-
-    - name: Generate Image Vulnerability Attestation
-      run: |
-        trivy image --format cosign-vuln $IMAGE > attestations/vuln-image.json
-
-    # ------------------------------------------------------------
-    # PHASE 3 — SIGN IMAGE (Keyless OIDC)
-    # ------------------------------------------------------------
-    - name: Sign Image
-      env:
-        COSIGN_EXPERIMENTAL: "1"
-      run: |
-        cosign sign --yes $IMAGE
-
-    # ------------------------------------------------------------
-    # PHASE 3 — ATTACH ATTESTATIONS
-    # ------------------------------------------------------------
-    - name: Attach SBOM Attestation
-      run: |
-        cosign attest --yes \
-          --type spdxjson \
-          --predicate attestations/sbom.json \
-          $IMAGE
-
-    - name: Attach Vulnerability Attestation (Source)
-      run: |
-        cosign attest --yes \
-          --type vuln \
-          --predicate attestations/vuln-source.json \
-          $IMAGE
-
-    - name: Attach Vulnerability Attestation (IaC)
-      run: |
-        cosign attest --yes \
-          --type vuln \
-          --predicate attestations/vuln-iac.json \
-          $IMAGE
-
-    - name: Attach Vulnerability Attestation (Image)
-      run: |
-        cosign attest --yes \
-          --type vuln \
-          --predicate attestations/vuln-image.json \
-          $IMAGE
-
-    # ------------------------------------------------------------
-    # PHASE 3 — VERIFY (NO HANG VERSION)
-    # ------------------------------------------------------------
-    - name: Verify Image Signature
-      run: |
-        COSIGN_EXPERIMENTAL=1 cosign verify \
-          --experimental-oci11 \
-          --insecure-ignore-tlog \
-          --certificate-identity-regexp=".*" \
-          --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
-          $IMAGE
-
-    - name: Verify SBOM Attestation
-      run: |
-        COSIGN_EXPERIMENTAL=1 cosign verify-attestation \
-          --experimental-oci11 \
-          --insecure-ignore-tlog \
-          --type spdxjson \
-          --certificate-identity-regexp=".*" \
-          --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
-          $IMAGE
-
-    - name: Verify Vulnerability Attestations
-      run: |
-        COSIGN_EXPERIMENTAL=1 cosign verify-attestation \
-          --experimental-oci11 \
-          --insecure-ignore-tlog \
-          --type vuln \
-          --certificate-identity-regexp=".*" \
-          --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
-          $IMAGE
-
-    # ------------------------------------------------------------
-    # REKOR CHECK (Separate from Cosign Verify)
-    # ------------------------------------------------------------
-    - name: Verify Rekor Entries
-      run: |
-        HASH=$(echo $DIGEST | cut -d: -f2)
-        COUNT=$(rekor-cli search --sha $HASH | wc -l)
-        echo "Rekor entries found: $COUNT"
-        if [ "$COUNT" -lt 5 ]; then
-          echo "Expected at least 5 Rekor entries"
-          exit 1
-        fi
-
-    # ------------------------------------------------------------
-    # SUCCESS
-    # ------------------------------------------------------------
-    - name: Success Summary
-      run: |
-        echo "Pipeline completed successfully."
-        echo "Published image:"
-        echo "$IMAGE"
+          # 2. Verify Attestations (Redirected to prevent hang)
+          echo "Verifying SLSA Provenance..."
+          cosign verify-attestation --type slsaprovenance $IMAGE_REF > /dev/null
+          
+          echo "Verifying SBOM..."
+          cosign verify-attestation --type spdxjson $IMAGE_REF > /dev/null
+          
+          echo "Verifying Vulnerability Attestation..."
+          cosign verify-attestation --type vuln $IMAGE_REF > /dev/null
+          
+          echo "All verifications successful!"

@@ -46,10 +46,10 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: .                # The root of the repo (where your code is)
+          file: ./src/Dockerfile    # The specific path to your Dockerfile
           push: true
           tags: ${{ env.IMAGE_NAME }}:latest
-          # These now work because Buildx is active
           sbom: true
           provenance: true
 

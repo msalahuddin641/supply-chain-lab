@@ -1,0 +1,63 @@
+name: Secure Supply Chain Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # Required for Cosign Keyless signing
+
+jobs:
+  build-and-secure:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. SECURITY SCANNING (Source & IaC)
+      - name: Scan Source Code
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          exit-code: '1' # Fails the build if vulnerabilities found
+          severity: 'HIGH,CRITICAL'
+
+      # 2. AUTHENTICATE TO GHCR
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. BUILD WITH ATTESTATIONS (SBOM & Provenance)
+      - name: Build and Push Image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:latest
+          sbom: true
+          provenance: true
+
+      # 4. SIGN EVERYTHING (Keyless)
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Sign Image & Attestations
+        run: |
+          cosign sign --yes ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          # Repeat for attestations generated in previous steps
+
+      # 5. VERIFY REKOR ENTRIES
+      - name: Verify Signatures
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/$(github.repository)/.github/workflows/supply-chain.yml" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}

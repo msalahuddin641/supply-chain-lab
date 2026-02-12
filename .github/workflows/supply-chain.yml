@@ -66,6 +66,6 @@ jobs:
       - name: Verify Signatures
         run: |
           cosign verify \
-            --certificate-identity-regexp "https://github.com/$(github.repository)/.github/workflows/supply-chain.yml" \
+            --certificate-identity-regexp "https://github.com/$GITHUB_REPOSITORY/.github/workflows/supply-chain.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}

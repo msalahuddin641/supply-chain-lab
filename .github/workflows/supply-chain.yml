@@ -5,67 +5,111 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
-  packages: write
-  id-token: write # Required for Cosign Keyless signing
+  [cite_start]id-token: write    # Required for Sigstore keyless signing 
+  [cite_start]contents: read     # Required to checkout code [cite: 511]
+  [cite_start]packages: write    # Required to push to GHCR [cite: 512]
 
 jobs:
-  build-and-secure:
+  secure-build:
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository }}
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/supply-chain-app
+      # Use commit SHA for unique tagging [cite: 516]
+      TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. SECURITY SCANNING (Source & IaC)
-      - name: Scan Source Code
+      # PHASE 1: SECURITY SCANNING [cite: 502]
+      # Scan Source & Dependencies (1.1, 1.2) [cite: 24, 25]
+      - name: Scan Source and Deps
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
-          exit-code: '1' # Fails the build if vulnerabilities found
+          [cite_start]exit-code: '1' # Fails if HIGH/CRITICAL found [cite: 502]
           severity: 'HIGH,CRITICAL'
 
-      # 2. AUTHENTICATE TO GHCR
-      - name: Login to GitHub Container Registry
+      # Scan Dockerfile and IaC (1.1, 1.4) [cite: 26, 27]
+      - name: Scan Config (Dockerfile & IaC)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+
+      # PHASE 2: BUILD WITH ATTESTATIONS [cite: 503]
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          [cite_start]password: ${{ secrets.GITHUB_TOKEN }} # Automatic auth [cite: 515]
 
-      # ... (checkout and login steps) ...
-
-      # ADD THIS STEP HERE
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 3. BUILD WITH ATTESTATIONS
-      - name: Build and Push Image
+      - name: Build and Push with SBOM & Provenance
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: ./src                # The root of the repo (where your code is)
-          file: ./src/docker/Dockerfile    # The specific path to your Dockerfile
+          context: ./src
+          file: ./src/docker/Dockerfile
           push: true
-          tags: ${{ env.IMAGE_NAME }}:latest
-          sbom: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG }}
+          # Generate SLSA and SBOM metadata [cite: 523]
           provenance: true
+          sbom: true
 
-      # 4. SIGN EVERYTHING (Keyless)
+      # PHASE 3: SIGNING & VULNERABILITY ATTESTATIONS [cite: 504]
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.4.0
+        uses: sigstore/cosign-installer@v3
 
-      - name: Sign Image & Attestations
+      - name: Install Trivy
         run: |
-          cosign sign --yes ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-          # Repeat for attestations generated in previous steps
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.49.1/trivy_0.49.1_Linux-64bit.deb
+          sudo dpkg -i trivy_0.49.1_Linux-64bit.deb
 
-      # 5. VERIFY REKOR ENTRIES
-      - name: Verify Signatures
+      - name: Generate Vulnerability Reports
         run: |
+          mkdir -p attestations
+          # Generate 3x vuln reports in cosign format [cite: 196, 503]
+          trivy fs --format cosign-vuln src/ > attestations/vuln-source.json
+          trivy config --format cosign-vuln src/iac/ > attestations/vuln-iac.json
+          trivy image --format cosign-vuln ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} > attestations/vuln-image.json
+
+      - name: Sign Image and Attach Attestations
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE_REF="${{ env.IMAGE_NAME }}@${{ env.DIGEST }}"
+          
+          # Keyless signing of the image [cite: 504, 519]
+          cosign sign --yes $IMAGE_REF
+          
+          # Attach the 3 vulnerability attestations [cite: 396, 402, 407]
+          cosign attest --yes --type vuln --predicate attestations/vuln-source.json $IMAGE_REF
+          cosign attest --yes --type vuln --predicate attestations/vuln-iac.json $IMAGE_REF
+          cosign attest --yes --type vuln --predicate attestations/vuln-image.json $IMAGE_REF
+
+      # PHASE 4: VERIFICATION [cite: 506, 547]
+      - name: Verify Signatures and Rekor
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE_REF="${{ env.IMAGE_NAME }}@${{ env.DIGEST }}"
+          
+          # Verify image signature identity 
           cosign verify \
-            --certificate-identity-regexp "https://github.com/$GITHUB_REPOSITORY/.github/workflows/supply-chain.yml@refs/heads/main" \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/supply-chain.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+            $IMAGE_REF
+
+          # Verify all 5 attestations (Provenance, SBOM, 3x Vuln) [cite: 528, 544]
+          cosign verify-attestation --type slsaprovenance $IMAGE_REF
+          cosign verify-attestation --type spdxjson $IMAGE_REF
+          cosign verify-attestation --type vuln $IMAGE_REF
+
+          # Confirm 6 Rekor entries exist [cite: 529, 547]
+          HASH=$(echo $DIGEST | cut -d: -f2)
+          cosign verify $IMAGE_REF --rekor-url https://rekor.sigstore.dev

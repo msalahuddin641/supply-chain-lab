@@ -183,19 +183,21 @@ jobs:
         cosign attest --yes --type vuln --predicate attestations/vuln-image.json "${IMAGE}"
 
     # ---------------- VERIFY ATTESTATIONS (NO HANG) ----------------
-    - name: Verify attestations (CI-safe)
+    - name: Verify Attestations
       env:
-        COSIGN_EXPERIMENTAL: "1"
+          COSIGN_EXPERIMENTAL: "1"
       run: |
-        for TYPE in slsaprovenance spdxjson vuln; do
-          cosign verify-attestation \
-            --experimental-oci11 \
-            --insecure-ignore-tlog \
-            --type "${TYPE}" \
-            --certificate-identity-regexp=".*" \
-            --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
-            "${IMAGE}"
-        done
+          for TYPE in slsaprovenance spdxjson vuln; do
+            echo "Verifying ${TYPE} attestation..."
+            cosign verify-attestation \
+              --experimental-oci11 \
+              --insecure-ignore-tlog \
+              --type "${TYPE}" \
+              --certificate-identity-regexp=".*" \
+              --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
+              "${IMAGE}" > /dev/null
+          done
+          echo "All attestations verified successfully!"
 
     # ---------------- REKOR CHECK ----------------
     - name: Verify Rekor entries (retry)

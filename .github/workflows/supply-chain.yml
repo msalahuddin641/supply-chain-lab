@@ -164,6 +164,7 @@ jobs:
     - name: Verify Image Signature
       run: |
         cosign verify \
+          --experimental-oci11 \
           --certificate-identity-regexp=".*" \
           --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
           $IMAGE
@@ -171,6 +172,7 @@ jobs:
     - name: Verify SBOM Attestation
       run: |
         cosign verify-attestation \
+          --experimental-oci11 \
           --type spdxjson \
           --certificate-identity-regexp=".*" \
           --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \
@@ -179,6 +181,7 @@ jobs:
     - name: Verify Vulnerability Attestations
       run: |
         cosign verify-attestation \
+          --experimental-oci11 \
           --type vuln \
           --certificate-identity-regexp=".*" \
           --certificate-oidc-issuer-regexp="https://token.actions.githubusercontent.com" \

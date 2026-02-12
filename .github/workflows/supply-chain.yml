@@ -35,13 +35,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. BUILD WITH ATTESTATIONS (SBOM & Provenance)
+      # ... (checkout and login steps) ...
+
+      # ADD THIS STEP HERE
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. BUILD WITH ATTESTATIONS
       - name: Build and Push Image
         id: build
         uses: docker/build-push-action@v5
         with:
+          context: .
           push: true
           tags: ${{ env.IMAGE_NAME }}:latest
+          # These now work because Buildx is active
           sbom: true
           provenance: true
 

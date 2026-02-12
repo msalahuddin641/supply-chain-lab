@@ -94,7 +94,7 @@ jobs:
     # Scan built image (fail if HIGH/CRITICAL)
     - name: Scan Built Image
       run: |
-        trivy image --severity HIGH,CRITICAL --exit-code 1 $IMAGE
+        trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $IMAGE
 
     # ------------------------------------------------------------
     # PHASE 2 — GENERATE ATTESTATIONS

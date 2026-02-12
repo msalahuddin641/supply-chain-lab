@@ -5,9 +5,9 @@ on:
     branches: [ main ]
 
 permissions:
-  [cite_start]id-token: write    # Required for Sigstore keyless signing 
-  [cite_start]contents: read     # Required to checkout code [cite: 511]
-  [cite_start]packages: write    # Required to push to GHCR [cite: 512]
+  contents: read
+  packages: write
+  id-token: write # Required for Cosign Keyless signing
 
 jobs:
   secure-build:

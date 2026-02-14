@@ -5,6 +5,7 @@ app = Flask(__name__)
 
 # Hardcoded secret (vulnerability #1 - Source Code)
 #API_TOKEN = "sk-1234567890abcdef"
+#Test Commit for Presentation Demo
 API_TOKEN = os.environ.get('API_TOKEN', 'default')
 @app.route('/user/<user_id>')
 def get_user(user_id):
